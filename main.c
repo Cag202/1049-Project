@@ -33,6 +33,7 @@ int main(void)
     {
 		send_to_MAX7221(0b00001100,0b00000001); //turn on the display DIG 0
 		send_to_MAX7221(0b00001100,0b00000010); //turn on the display DIG 1
+	    //not everything just a baseline cause i know that were going to have to loop it to constantly check
     }
 }
 //Function to send data to MAX 7221
