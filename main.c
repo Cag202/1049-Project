@@ -55,7 +55,7 @@ int main(void)
 
 	send_to_MAX7221(0b00001100,0b00000001); //turn on the display DIG 0
 	send_to_MAX7221(0b00001100,0b00000010); //turn on the display DIG 1
-
+	
 	// Variables
 	int result;
 	char flag = 1; //test flag for check in purposes
@@ -64,7 +64,9 @@ int main(void)
     {
 		send_to_MAX7221(0b00001100,0b00000001); //turn on the display DIG 0
 		send_to_MAX7221(0b00001100,0b00000010); //turn on the display DIG 1
-	    //not everything just a baseline cause i know that were going to have to loop it to constantly check
+
+	   	send_to_MAX7221(0b00000001,0b00000000); //binary 0 on DIG0
+		send_to_MAX7221(0b00000010,0b00000000); //binary 3 on DIG1
 		
 		//need to demonstrate both rotation motor with position control and pump running
 		/* goals
