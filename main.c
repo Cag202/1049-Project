@@ -7,6 +7,9 @@
 
 #include <avr/io.h>
 
+// Global Variables and Constants
+const float d_per_lvl = 1.0588;
+
 //Function Prototypes
 int send_to_MAX7221(unsigned char command, unsigned char data); //displays data on 7 segment displays
 void wait(volatile int multiple, volatile char time_choice); //classic wait function :3
@@ -31,6 +34,7 @@ int main(void)
 	// Calibration start switch on PC4
 	// Start test cycle on PC5
 	
+	//will begin to start referencing rotation motor as just motor and pump motor as pump
 	
 	//Begin Assignment Statements
     DDRB = 0b00101111; // 7 Segment is PB2,3,5 PB0,1 are motor pins
@@ -52,11 +56,57 @@ int main(void)
 	send_to_MAX7221(0b00001100,0b00000001); //turn on the display DIG 0
 	send_to_MAX7221(0b00001100,0b00000010); //turn on the display DIG 1
 
+	// Variables
+	int result;
+	char flag = 1; //test flag for check in purposes
+	
     while (1) 
     {
 		send_to_MAX7221(0b00001100,0b00000001); //turn on the display DIG 0
 		send_to_MAX7221(0b00001100,0b00000010); //turn on the display DIG 1
 	    //not everything just a baseline cause i know that were going to have to loop it to constantly check
+		
+		//need to demonstrate both rotation motor with position control and pump running
+		/* goals
+			1) set motor on in positive direction
+			2) run motor until potentiometer is turned to complete 45 degree rotation, decrease speed some at 37.5 degrees to avoid tipping
+			3) have pump also running, decrease pwm from say 37.5 degrees to avoid over saturation of soil
+			4) once potentiometer hits 45 degrees, reverse direction with same pwm
+			5) increase pwm passed the 37.5 degree mark
+		*/
+		
+		//key notes: potentiometer has range of 270 degrees with 255 levels to give 1.0588 degrees/level
+		//midpoint is roughly level 128 (actual value 127.5)
+		// 45 degree rotation would be 42.5 steps, will round to 43 steps
+		
+		while(flag){
+			//get initial position and start motor in forward direction
+			result = ADC_Conversion(3);
+			motor_run(1,1,100); //motor on forward at "full speed"
+			motor_run(2,1,50); //pump on at "full flow"
+			//control to see when angle changes
+			while(result < 43){ //going to start from 0 degrees and then rotate to 45 degrees by hand
+				result = ADC_Conversion(3);
+				if(result > 35){
+					motor_run(1,1,50); //reducing speed of motor as specified in above goals
+					motor_run(2,1,25); //reducing pump flow per specified goal
+				}
+				wait(25); //allows motor to continue running 
+			} // Motor hits first full movement
+			motor_off(3); //turning off motor and pump to reduce jerk
+			wait(25);
+			motor_run(1,0,100); //turning motor back on in reverse direction at "full speed"
+			motor_run(2,1,50); //turning pump back on at full flow
+			while(result > 0) {
+				result = ADC_Conversion(3);
+				if(result < 8){
+					motor_run(1,0,50); //reducing speed of motor as specified in above goals
+					motor_run(2,1,25); //reducing pump flow per specified goal
+				}
+			}
+			motor_off(3);
+			flag = 0;
+		}
     }
 }
 //Function to send data to MAX 7221
