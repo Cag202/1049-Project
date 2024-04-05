@@ -37,10 +37,11 @@ int main(void)
 	//will begin to start referencing rotation motor as just motor and pump motor as pump
 	
 	//Begin Assignment Statements
-	DDRC = 0b0111000; //PC0 to PC2 0's for the three ADC conversions PC# 1 for motor 2 reverse, PC4 and PC5 1's because LEDS are outputs
-	PORTC = PORTC & 0<<PC4 & 0<<PC5 & 0<<PC1; //turning off the LED's and motor to start
+	DDRC = 0b0111000; //PC0 to PC2 0's for the three ADC conversions PC# 3 for motor 2 reverse, PC4 and PC5 1's because LEDS are outputs
+	PORTC = PORTC | (1<<PC4 | 1<<PC5);
+	PORTC = PORTC ^ 0<<PC3; //turning off the LED's and motor to start
 	
-	DDRD = 0b00010011; // PD5 and PD6 PWM 0, D7 and D3 nothing on them so 0, D4 1 cause direction, D2 0 cause interrupt is input, switches are set as outputs
+	DDRD = 0b01110011; // PD5 and PD6 PWM 0, D7 and D3 nothing on them so 0, D4 1 cause direction, D2 0 cause interrupt is input, switches are set as outputs
 	PORTD = PORTD & 0<<PD4;
 	
 	DDRB = 0b00101111; // 7 Segment is PB2,3,5 PB0,1 are motor pins
@@ -60,7 +61,11 @@ int main(void)
 	send_to_MAX7221(0b00001011,0b00000010); //enable scan limit
 
 	send_to_MAX7221(0b00001100,0b00000001); //turn on the display DIG 0
-	send_to_MAX7221(0b00001100,0b00000010); //turn on the display DIG 1
+	//send_to_MAX7221(0b00001100,0b00000010); //turn on the display DIG 1
+	
+	//Set up PWM timers
+	TCCR0A = 0b10100011;
+	TCCR0B = 0b00000011;
 	
 	// Variables
 	int result;
@@ -69,11 +74,12 @@ int main(void)
     while (1) 
     {
 		send_to_MAX7221(0b00001100,0b00000001); //turn on the display DIG 0
-		send_to_MAX7221(0b00001100,0b00000010); //turn on the display DIG 1
+		//send_to_MAX7221(0b00001100,0b00000010); //turn on the display DIG 1
 
 	   	send_to_MAX7221(0b00000001,0b00000000); //binary 0 on DIG0
-		send_to_MAX7221(0b00000010,0b00000000); //binary 3 on DIG1
+		send_to_MAX7221(0b00000010,0b00000000); //binary 0 on DIG1
 		wait(1000);
+		
 		//need to demonstrate both rotation motor with position control and pump running
 		/* goals
 			1) set motor on in positive direction
@@ -90,7 +96,7 @@ int main(void)
 		while(flag){
 			//get initial position and start motor in forward direction
 			result = ADC_Conversion(3);
-			motor_run(1,1,100); //motor on forward at "full speed"
+			motor_run(1,1,125); //motor on forward at "full speed"
 			motor_run(2,1,50); //pump on at "full flow"
 			//control to see when angle changes
 			while(result < 43){ //going to start from 0 degrees and then rotate to 45 degrees by hand
@@ -238,6 +244,7 @@ void delay_T_msec_timer1(volatile char choice) {
 int ADC_Conversion(char pin_choice){
 	//need to adjust ADMUX register to read the correct pin value
 	ADMUX = ADMUX & (1<<MUX0 & 1<<MUX1 & 1<<MUX2 & 1<<MUX3);
+	ADMUX = ADMUX |  0b00100000;
 	//ADMUX = ADMUX ^ (1<<MUX0 | 1<<MUX1 | 1<<MUX2 | 1<<MUX3);
 	if(pin_choice == 1){
 		//set adc to happen at moisture sensor
@@ -263,11 +270,12 @@ void motor_run(char motor, char direction, int pwm){
 		OCR0A = pwm; //setting how fast the motor is running
 		//direction logic
 		if(direction == 1) { //1 is forward
-			PORTB = PORTB | 1<<PB0;
 			PORTD = PORTD & 0<<PD4;
+			PORTB = PORTB | 1<<PB0;
+			PORTD = PORTD | 1<<PD6;
 		} else if (direction == 0){  //0 is reverse 
-			PORTB = PORTB & 0<<PB0;
-			PORTD = PORTD | 1<<PD4;
+			PORTB = PORTB | 0<<PB0;
+			PORTD = PORTD | 1<<PD4 | 1<<PD5;
 		}
 	} else if (motor == 2){ //start pump control
 		//no direction needed as the pump will always run in the forward direction
