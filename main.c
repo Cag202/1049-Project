@@ -12,7 +12,7 @@ const float d_per_lvl = 1.0588;
 
 //Function Prototypes
 int send_to_MAX7221(unsigned char command, unsigned char data); //displays data on 7 segment displays
-void wait(volatile int multiple, volatile char time_choice); //classic wait function :3
+void wait(volatile int multiple); //classic wait function :3
 //void delay_T_msec_timer0(volatile char choice); //Do not use this, this will disrupt all pwm clock cycle shenanigans
 void delay_T_msec_timer1(volatile char choice); //will be using this 
 int ADC_Conversion(char pin_choice); //completes and ADC at the selected pin
@@ -37,18 +37,24 @@ int main(void)
 	//will begin to start referencing rotation motor as just motor and pump motor as pump
 	
 	//Begin Assignment Statements
-    DDRB = 0b00101111; // 7 Segment is PB2,3,5 PB0,1 are motor pins
-	PORTB = PORTB | 0<<PB0 | 0<<PB1; //setting motors pins off to start
+	DDRC = 0b0111000; //PC0 to PC2 0's for the three ADC conversions PC# 1 for motor 2 reverse, PC4 and PC5 1's because LEDS are outputs
+	PORTC = PORTC & 0<<PC4 & 0<<PC5 & 0<<PC1; //turning off the LED's and motor to start
+	
+	DDRD = 0b00010011; // PD5 and PD6 PWM 0, D7 and D3 nothing on them so 0, D4 1 cause direction, D2 0 cause interrupt is input, switches are set as outputs
+	PORTD = PORTD & 0<<PD4;
+	
+	DDRB = 0b00101111; // 7 Segment is PB2,3,5 PB0,1 are motor pins
+	PORTB = PORTB & 0<<PB0 & 0<<PB1; //setting motors pins off to start
 	//PORTB
 	
-	DDRC = 0b0111000//PC0 to PC2 0's for the three ADC conversions PC# 1 for motor 2 reverse, PC4 and PC5 1's because LEDS are outputs
-	PORTC = PORTC | 0<<PC4 | 0<<PC5 | 0<<PC1; //turning off the LED's and motor to start
-	
-	DDRD = 0b00010011// PD5 and PD6 PWM 0, D7 and D3 nothing on them so 0, D4 1 cause direction, D2 0 cause interrupt is input, switches are set as outputs
-	PORTD = PORTD | 0<<PD4;
 	//setting up main SPI
 	SPCR = 0b01010001; // SPCR = 1<<SPE | 1<<MSTR | 1<<SPR0; // (SPIE = 0, SPE = 1, DORD = 0, MSTR = 1, CPOL = 0, CPHA = 0, SPR1 = 0, SPR0 = 1)
 	// enable the SPI, set to Main mode 0, SCK = Fosc/16, lead with MSB
+	
+	// ADC set up
+	PRR = 0x00;
+	ADCSRA = 0b10000111;
+	ADMUX = 0b00100101;
 
 	send_to_MAX7221(0b00001001,0b00000011); //enable decoding mode
 	send_to_MAX7221(0b00001011,0b00000010); //enable scan limit
@@ -67,7 +73,7 @@ int main(void)
 
 	   	send_to_MAX7221(0b00000001,0b00000000); //binary 0 on DIG0
 		send_to_MAX7221(0b00000010,0b00000000); //binary 3 on DIG1
-		
+		wait(1000);
 		//need to demonstrate both rotation motor with position control and pump running
 		/* goals
 			1) set motor on in positive direction
@@ -125,7 +131,7 @@ int send_to_MAX7221(unsigned char command, unsigned char data){
 }
 
 //WAIT FUNCTION
-void wait(volatile int multiple, volatile char time_choice) {
+void wait(volatile int multiple) {
 	/* This subroutine calls others to create a delay.
 		 Total delay = multiple*T, where T is in msec and is the delay created by the called function.
 	
@@ -186,7 +192,7 @@ void delay_T_msec_timer1(volatile char choice) {
 
 
 /* void delay_T_msec_timer0(volatile char choice) {
-    //*** delay T ms **
+    // ** delay T ms **
     /* This subroutine creates a delay of T msec using TIMER0 with prescaler on clock, where, for a 16MHz clock:
     		for Choice = 1: T = 0.125 msec for prescaler set to 8 and count of 250 (preload counter with 5)
     		for Choice = 2: T = 1 msec for prescaler set to 64 and count of 250 (preload counter with 5)
@@ -231,6 +237,8 @@ void delay_T_msec_timer1(volatile char choice) {
 
 int ADC_Conversion(char pin_choice){
 	//need to adjust ADMUX register to read the correct pin value
+	ADMUX = ADMUX & (1<<MUX0 & 1<<MUX1 & 1<<MUX2 & 1<<MUX3);
+	//ADMUX = ADMUX ^ (1<<MUX0 | 1<<MUX1 | 1<<MUX2 | 1<<MUX3);
 	if(pin_choice == 1){
 		//set adc to happen at moisture sensor
 	}
@@ -240,7 +248,7 @@ int ADC_Conversion(char pin_choice){
 	}
 	if(pin_choice == 3){
 		//set adc to happen at rotation potentiometer ie mux bits 0010
-		ADMUX = ADMUX | 1<<MUX0 | 0<<MUX1 | 0<<MUX2 | 0<<MUX3;
+		ADMUX = ADMUX | 0<<MUX0 | 1<<MUX1 | 0<<MUX2 | 0<<MUX3;
 	}
 	ADCSRA = ADCSRA | 0b01000000; // start conversion
 	while((ADCSRA & 0b00010000) == 0); //While ADIF is set to 1  keep looping
@@ -254,11 +262,11 @@ void motor_run(char motor, char direction, int pwm){
 	if(motor == 1) { //start rotaion motor control
 		OCR0A = pwm; //setting how fast the motor is running
 		//direction logic
-		if(direction == 0) { //0 is reverse
+		if(direction == 1) { //1 is forward
 			PORTB = PORTB | 1<<PB0;
-			PORTD = PORTD | 0<<PD4;
-		} else if (direction == 1){ //1 is forward
-			PORTB = PORTB | 0<<PB0;
+			PORTD = PORTD & 0<<PD4;
+		} else if (direction == 0){  //0 is reverse 
+			PORTB = PORTB & 0<<PB0;
 			PORTD = PORTD | 1<<PD4;
 		}
 	} else if (motor == 2){ //start pump control
@@ -270,14 +278,13 @@ void motor_run(char motor, char direction, int pwm){
 
 void motor_off(char motor){
 	if(motor == 1){ //rotaion motor off
-		PORTB = PORTB | 0<<PB0;
-		PORTD = PORTD | 0<<PD4;
+		PORTB = PORTB & 0<<PB0;
+		PORTD = PORTD & 0<<PD4;
 	} else if (motor == 2){ //pump off
-		PORTB = PORTB | 0<<PB1;
+		PORTB = PORTB & 0<<PB1;
 	} else if (motor == 3) { //both off
 		motor_off(1);
 		motor_off(2);
 	}
 	
 }
-
