@@ -9,6 +9,8 @@
 
 // Global Variables and Constants
 const float d_per_lvl = 1.0588;
+volatile int pwm_base; //stores the value of the pwm obtained in the calibration function.
+
 
 //Function Prototypes
 int send_to_MAX7221(unsigned char command, unsigned char data); //displays data on 7 segment displays
@@ -18,6 +20,8 @@ void delay_T_msec_timer1(volatile char choice); //will be using this
 int ADC_Conversion(char pin_choice); //completes and ADC at the selected pin
 void motor_run(char motor, char direction, int pwm); //runs selected motor at selected speed in selected direction
 void motor_off(char motor); //turns off selected motor
+void calibration(); //function to determine the pwm value needed to operate motor at wanted angular velocity.
+void water_cycle(); //function to complete 1 full watering cycle
 
 int main(void)
 {
@@ -31,8 +35,8 @@ int main(void)
 	// Water level ADC on PC1
 	// Moisture level on PC0
 	// Rotation ADC on PC2
-	// Calibration start switch on PC4
-	// Start test cycle on PC5
+	// Calibration start switch on PD0
+	// Start test cycle on PD1
 	
 	//will begin to start referencing rotation motor as just motor and pump motor as pump
 	
@@ -69,7 +73,8 @@ int main(void)
 	
 	// Variables
 	int result;
-	char flag = 1; //test flag for check in purposes
+	char calibration_flag = 1; //test flag for check in purposes
+	float water_warning_lvl = 30.0 / d_per_lvl;
 	
     while (1) 
     {
@@ -80,20 +85,13 @@ int main(void)
 		send_to_MAX7221(0b00000010,0b00000000); //binary 0 on DIG1
 		wait(1000);
 		
-		//need to demonstrate both rotation motor with position control and pump running
-		/* goals
-			1) set motor on in positive direction
-			2) run motor until potentiometer is turned to complete 45 degree rotation, decrease speed some at 37.5 degrees to avoid tipping
-			3) have pump also running, decrease pwm from say 37.5 degrees to avoid over saturation of soil
-			4) once potentiometer hits 45 degrees, reverse direction with same pwm
-			5) increase pwm passed the 37.5 degree mark
-		*/
 		
 		//key notes: potentiometer has range of 270 degrees with 255 levels to give 1.0588 degrees/level
 		//midpoint is roughly level 128 (actual value 127.5)
 		// 45 degree rotation would be 42.5 steps, will round to 43 steps
 		
-		while(flag){
+		//test code for check in 2, remove before final push
+		/*while(flag){
 			//get initial position and start motor in forward direction
 			result = ADC_Conversion(3);
 			motor_run(1,1,125); //motor on forward at "full speed"
@@ -120,9 +118,57 @@ int main(void)
 			}
 			motor_off(3);
 			flag = 0;
+			*/
+		
+		//Start final product code
+		
+		//Poll for button press to calibrate
+		while(calibration_flag){
+			if(!(PORTD & (1<<PD0))){
+				wait(50);
+				calibration_flag = 0;
+			} else {
+			wait(50);
+			}
+		}
+		calibration();
+		calibration_flag = 1; //resetting flag for use in next button polling
+		
+		//Poll for button press for first test cycle
+		while(calibration_flag){
+			if(!(PORTD & (1<<PD1))){
+				wait(50);
+				calibration_flag = 0;
+			} else {
+				wait(50);
+			}
+		}
+		water_cycle();
+		PORTC = (!(PORTC | 1<<PC5)); //Turning on full use light
+			
+		
+		//while(1) loop for steady state operation, 
+			//read moisture level for soil
+				//display moisture level to 7 segment display
+				//run water_cycle() if moisture level fails threshold
+			//adc check water level
+				//light led if water level too low
+		
+		while(1){
+			
+			//read moisture level, need sensors to see exactly how this will be coded
+			
+			//water reservoir level
+			result = ADC_Conversion(2);
+			if(result < water_warning_lvl) {
+				PORTC = (!(PORTC | 1<<PC4));
+			} else {
+				PORTC = (!(PORTC | 0<<PC5));
+			}
 		}
     }
 }
+
 //Function to send data to MAX 7221
 int send_to_MAX7221(unsigned char command, unsigned char data){
 		PORTB = PORTB & 0b11111011; // Clear PB2, which is the SS bit, so that
@@ -275,12 +321,13 @@ void motor_run(char motor, char direction, int pwm){
 			PORTD = PORTD | 1<<PD6;
 		} else if (direction == 0){  //0 is reverse 
 			PORTB = PORTB | 0<<PB0;
-			PORTD = PORTD | 1<<PD4 | 1<<PD5;
+			PORTD = PORTD | 1<<PD4 | 1<< PD6;
 		}
 	} else if (motor == 2){ //start pump control
 		//no direction needed as the pump will always run in the forward direction
 		OCR0B = pwm;
 		PORTB = PORTB | 1<<PB1;
+		PORTD = PORTD | 1<<PD5;
 	}
 }
 
@@ -296,3 +343,97 @@ void motor_off(char motor){
 	}
 	
 }
+
+void calibration(){
+	//start by getting pwm_base value.
+	motor_off(3);
+	float position = ADC_Conversion(3); //getting initial position in steps.
+	float angular_V = ((ADC_Conversion(3)-position)*d_per_lvl)/2.0; //getting angular velocity for 2 second pulse of motor
+	char pwm = 40;
+	while (angular_V < 3.0) { //3.0 degrees/s is the wanted velocity based on motor analysis document
+		position = ADC_Conversion(3);
+		motor_run(1,1,pwm);
+		wait(2000);
+		motor_off(1);
+		angular_V = ((ADC_Conversion(3)-position)*d_per_lvl)/2.0;
+		motor_run(1,0,pwm);
+		wait(2000);
+		motor_off(1);
+		pwm = pwm + 10;
+	}
+	pwm_base = pwm; //setting pwm speed for the rest of the program
+	
+	//getting to correct initial position (halfway through wiper arc) for test cycle and then normal operation
+	position = ADC_Conversion(3);
+	while(position > 128){ //moving down to center
+		if( (position - 128)  < 8){
+			motor_run(1,0,(pwm_base-15));
+			wait(500);
+			position = ADC_Conversion(3);
+		}
+		else { 
+			motor_run(1,0,pwm_base);
+			wait(500);
+			position = ADC_Conversion(3);
+		}
+	} motor_off(1);
+	while(position < 128){ //moving up to center
+		if(128 - position < 8){
+			motor_run(1,1,(pwm_base-15));
+			wait(500);
+			position = ADC_Conversion(3);
+		} else {
+			motor_run(1,1,pwm_base);
+			wait(500);
+			position = ADC_Conversion(3);
+		}
+	} motor_off(1);
+}
+
+void water_cycle(){
+	//goals
+	//rotate motor 45 degrees with pump on, slow motor and pump around the corner, reverse the direction, return to origin, then do on opposite side.
+	char position = ADC_Conversion(3);
+	//moving (+) 45 deg first
+	while (position < 171){
+		if((171 - position) < 8) {
+			motor_run(1,1,(pwm_base-15));
+			motor_run(2,1,50);
+			wait(500);
+			position = ADC_Conversion(3);
+		} else {
+			motor_run(1,1,pwm_base);
+			motor_run(2,1,75);
+			wait(500);
+			position = ADC_Conversion(3);
+		}
+	} //end of first movement 
+	//moving (-) 90 deg
+	while(position > 85) {
+		if((position - 85 < 8)){
+			motor_run(1,0,(pwm_base-15));
+			motor_run(2,1,50);
+			wait(500);
+			position = ADC_Conversion(3);
+		} else {
+			motor_run(1,0,pwm_base);
+			motor_run(2,1,75);
+			wait(500);
+			position = ADC_Conversion(3);
+		}
+	} //end of second movement
+	while(position < 128) {
+		if((128 - position) < 8) {
+			motor_run(1,0,(pwm_base-15));
+			motor_run(2,1,50);
+			wait(500);
+			position = ADC_Conversion(3);
+		} else {
+			motor_run(1,0,pwm_base);
+			motor_run(2,1,75);
+			wait(500);
+			position = ADC_Conversion(3);
+		}
+	}
+	motor_off(3);
+} //End of function
