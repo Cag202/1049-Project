@@ -10,8 +10,8 @@
 // Global Variables and Constants
 const float d_per_lvl = 1.0588;
 volatile int pwm_base; //stores the value of the pwm obtained in the calibration function.
-const moisture_max = 255; //Adjust this value once max level read by the sensor is found
-const moisture_threshold = 75;
+const int moisture_max = 255; //Adjust this value once max level read by the sensor is found
+const int moisture_threshold = 75;
 
 
 //Function Prototypes
@@ -178,13 +178,14 @@ int main(void)
 			}
 			send_to_MAX7221(0b00000001,i); //display 10's place on dig 0
 			send_to_MAX7221(0b00000010,j); // display 1's place on dig 1
-			if(moisture_content < moisture_threshold) {
-				if(t == 0) {
-					water_cycle();
-				}
-				t--;
-			}
 			t = 60; // 60 second delay so water can permeate through soil
+			if(moisture_content < moisture_threshold) {
+				while(t > 0) {
+					wait(1000);
+					t--;
+				}
+				water_cycle();
+			}
 			
 			//water reservoir level
 			result = ADC_Conversion(2);
