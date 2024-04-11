@@ -10,6 +10,8 @@
 // Global Variables and Constants
 const float d_per_lvl = 1.0588;
 volatile int pwm_base; //stores the value of the pwm obtained in the calibration function.
+const moisture_max = 255; //Adjust this value once max level read by the sensor is found
+const moisture_threshold = 75;
 
 
 //Function Prototypes
@@ -45,7 +47,7 @@ int main(void)
 	PORTC = PORTC | (1<<PC4 | 1<<PC5);
 	PORTC = PORTC ^ 0<<PC3; //turning off the LED's and motor to start
 	
-	DDRD = 0b01110011; // PD5 and PD6 PWM 0, D7 and D3 nothing on them so 0, D4 1 cause direction, D2 0 cause interrupt is input, switches are set as outputs
+	DDRD = 0b01110000; // PD5 and PD6 PWM 0, D7 and D3 nothing on them so 0, D4 1 cause direction, D2 0 cause interrupt is input, switches are set as outputs
 	PORTD = PORTD & 0<<PD4;
 	
 	DDRB = 0b00101111; // 7 Segment is PB2,3,5 PB0,1 are motor pins
@@ -75,6 +77,8 @@ int main(void)
 	int result;
 	char calibration_flag = 1; //test flag for check in purposes
 	float water_warning_lvl = 30.0 / d_per_lvl;
+	int moisture_content;\
+	int t = 0; //time keeping variable 
 	
     while (1) 
     {
@@ -124,7 +128,7 @@ int main(void)
 		
 		//Poll for button press to calibrate
 		while(calibration_flag){
-			if(!(PORTD & (1<<PD0))){
+			if(!(PIND & 0b0000001)){
 				wait(50);
 				calibration_flag = 0;
 			} else {
@@ -136,7 +140,7 @@ int main(void)
 		
 		//Poll for button press for first test cycle
 		while(calibration_flag){
-			if(!(PORTD & (1<<PD1))){
+			if(!(PIND & (1<<PD1))){
 				wait(50);
 				calibration_flag = 0;
 			} else {
@@ -144,7 +148,7 @@ int main(void)
 			}
 		}
 		water_cycle();
-		PORTC = (!(PORTC | 1<<PC5)); //Turning on full use light
+		PORTC = ((PORTC | 1<<PC5)); //Turning on full use light
 			
 		
 		//while(1) loop for steady state operation, 
@@ -156,7 +160,31 @@ int main(void)
 		
 		while(1){
 			
+			//variables
+			int i = 0; //keeps track of 10's place digit of percentage
+			int j = 0; //keeps track of 1's place digit of percentage
+			
 			//read moisture level, need sensors to see exactly how this will be coded
+			result = ADC_Conversion(1); // read moisture soil content
+			moisture_content = ( (moisture_max * 100) - (result * 100) ) / (moisture_max * 100); //moisture level as 2 digit percentage
+			//need to separate moisture_content into 2 integers.
+			while(moisture_content > 10) {
+				moisture_content = moisture_content - 10;
+				i++;
+			}
+			while (moisture_content > 0) {
+				moisture_content--;
+				j++;
+			}
+			send_to_MAX7221(0b00000001,i); //display 10's place on dig 0
+			send_to_MAX7221(0b00000010,j); // display 1's place on dig 1
+			if(moisture_content < moisture_threshold) {
+				if(t == 0) {
+					water_cycle();
+				}
+				t--;
+			}
+			t = 60; // 60 second delay so water can permeate through soil
 			
 			//water reservoir level
 			result = ADC_Conversion(2);
@@ -165,6 +193,8 @@ int main(void)
 			} else {
 				PORTC = (!(PORTC | 0<<PC5));
 			}
+			
+			wait(1000);
 		}
     }
 }
