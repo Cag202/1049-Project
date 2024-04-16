@@ -6,12 +6,13 @@
  */ 
 
 #include <avr/io.h>
+#include <math.h>
 
 // Global Variables and Constants
 const float d_per_lvl = 1.0588;
 volatile int pwm_base; //stores the value of the pwm obtained in the calibration function.
-const int moisture_max = 255; //Adjust this value once max level read by the sensor is found
-const int moisture_threshold = 75;
+const float moisture_max = 220; //Adjust this value once max level read by the sensor is found
+const int moisture_threshold = 64;
 
 
 //Function Prototypes
@@ -24,6 +25,7 @@ void motor_run(char motor, char direction, int pwm); //runs selected motor at se
 void motor_off(char motor); //turns off selected motor
 void calibration(); //function to determine the pwm value needed to operate motor at wanted angular velocity.
 void water_cycle(); //function to complete 1 full watering cycle
+
 
 int main(void)
 {
@@ -76,19 +78,22 @@ int main(void)
 	// Variables
 	int result;
 	char calibration_flag = 1; //test flag for check in purposes
-	float water_warning_lvl = 30.0 / d_per_lvl;
-	int moisture_content;\
+	volatile float water_warning_lvl = 30.0 / d_per_lvl;
+	volatile float moisture_content;\
 	int t = 0; //time keeping variable 
 	
     while (1) 
     {
+		
+		//test line
+		const float moisture_max = 220;
+		
 		send_to_MAX7221(0b00001100,0b00000001); //turn on the display DIG 0
 		//send_to_MAX7221(0b00001100,0b00000010); //turn on the display DIG 1
 
-	   	send_to_MAX7221(0b00000001,0b00000000); //binary 0 on DIG0
-		send_to_MAX7221(0b00000010,0b00000000); //binary 0 on DIG1
-		wait(1000);
-		
+	   	send_to_MAX7221(0b00000001,0b00000001); //binary 0 on DIG0
+		send_to_MAX7221(0b00000010,0b00000010); //binary 0 on DIG1
+		//wait(1000);
 		
 		//key notes: potentiometer has range of 270 degrees with 255 levels to give 1.0588 degrees/level
 		//midpoint is roughly level 128 (actual value 127.5)
@@ -148,7 +153,7 @@ int main(void)
 			}
 		}
 		water_cycle();
-		PORTC = ((PORTC | 1<<PC5)); //Turning on full use light
+		PORTC = (!(PORTC | 1<<PC5)); //Turning on full use light
 			
 		
 		//while(1) loop for steady state operation, 
@@ -161,20 +166,26 @@ int main(void)
 		while(1){
 			
 			//variables
-			int i = 0; //keeps track of 10's place digit of percentage
-			int j = 0; //keeps track of 1's place digit of percentage
+			volatile int i = 0; //keeps track of 10's place digit of percentage
+			volatile int j = 0; //keeps track of 1's place digit of percentage
 			
 			//read moisture level, need sensors to see exactly how this will be coded
 			result = ADC_Conversion(1); // read moisture soil content
-			moisture_content = ( (moisture_max * 100) - (result * 100) ) / (moisture_max * 100); //moisture level as 2 digit percentage
+			moisture_content = ((moisture_max - result) / moisture_max) * 100.0; //moisture level as 2 digit percentage
+			//test line
+			wait(10);
+			moisture_content = 100 - moisture_content;
+			wait(10);
 			//need to separate moisture_content into 2 integers.
 			while(moisture_content > 10) {
 				moisture_content = moisture_content - 10;
 				i++;
+				send_to_MAX7221(0b00000001,i); //display 10's place on dig 0
 			}
 			while (moisture_content > 0) {
 				moisture_content--;
 				j++;
+				send_to_MAX7221(0b00000010,j); // display 1's place on dig 1
 			}
 			send_to_MAX7221(0b00000001,i); //display 10's place on dig 0
 			send_to_MAX7221(0b00000010,j); // display 1's place on dig 1
@@ -273,58 +284,15 @@ void delay_T_msec_timer1(volatile char choice) {
 
 } // end delay_T_msec_timer1()
 
-
-/* void delay_T_msec_timer0(volatile char choice) {
-    // ** delay T ms **
-    /* This subroutine creates a delay of T msec using TIMER0 with prescaler on clock, where, for a 16MHz clock:
-    		for Choice = 1: T = 0.125 msec for prescaler set to 8 and count of 250 (preload counter with 5)
-    		for Choice = 2: T = 1 msec for prescaler set to 64 and count of 250 (preload counter with 5)
-    		for Choice = 3: T = 4 msec for prescaler set to 256 and count of 250 (preload counter with 5)
-    		for Choice = 4: T = 16 msec for prescaler set to 1,024 and count of 250 (preload counter with 5)
-			for Choice = Default: T = .0156 msec for no prescaler and count of 250 (preload counter with 5)
-	
-			Inputs: None
-			Outputs: None
-	*/
-	
-/*	TCCR0A = 0x00; // clears WGM00 and WGM01 (bits 0 and 1) to ensure Timer/Counter is in normal mode.
-	TCNT0 = 0;  // preload value for testing on count = 250
-	// preload value for alternate test on while loop: TCNT0 = 5;  // preload load TIMER0  (count must reach 255-5 = 250)
-	
-	switch ( choice ) { // choose prescaler
-		case 1:
-			TCCR0B = 0b00000010; //1<<CS01;	TCCR0B = 0x02; // Start TIMER0, Normal mode, crystal clock, prescaler = 8
-		break;
-		case 2:
-			TCCR0B =  0b00000011; //1<<CS01 | 1<<CS00;	TCCR0B = 0x03;  // Start TIMER0, Normal mode, crystal clock, prescaler = 64
-		break;
-		case 3:
-			TCCR0B = 0b00000100; //1<<CS02;	TCCR0B = 0x04; // Start TIMER0, Normal mode, crystal clock, prescaler = 256
-		break; 
-		case 4:
-			TCCR0B = 0b00000101; //1<<CS02 | 1<<CS00; TCCR0B = 0x05; // Start TIMER0, Normal mode, crystal clock, prescaler = 1024
-		break;
-		default:
-			TCCR0B = 0b00000001; //1<<CS00; TCCR0B = 0x01; Start TIMER0, Normal mode, crystal clock, no prescaler
-		break;
-	}
-	
-	while (TCNT0 < 0xFA); // exits when count = 250 (requires preload of 0 to make count = 250)
-	// alternate test on while loop: while ((TIFR0 & (0x1<<TOV0)) == 0); // wait for TOV0 to roll over:
-	// How does this while loop work?? See notes
-	
-	TCCR0B = 0x00; // Stop TIMER0
-	//TIFR0 = 0x1<<TOV0;  // Alternate while loop: Clear TOV0 (note that this is a nonintuitive bit in that it is cleared by writing a 1 to it)
-	
-} */ // end delay_T_msec_timer0() 
-
 int ADC_Conversion(char pin_choice){
 	//need to adjust ADMUX register to read the correct pin value
 	ADMUX = ADMUX & (1<<MUX0 & 1<<MUX1 & 1<<MUX2 & 1<<MUX3);
 	ADMUX = ADMUX |  0b00100000;
+	wait(10); //small delay to allow admux bits to fully change
 	//ADMUX = ADMUX ^ (1<<MUX0 | 1<<MUX1 | 1<<MUX2 | 1<<MUX3);
 	if(pin_choice == 1){
 		//set adc to happen at moisture sensor
+		//empty if statement because this condition is the default based on above bit assignments and clearing
 	}
 	if(pin_choice == 2){
 		//set adc to happen at water level
@@ -343,7 +311,7 @@ void motor_run(char motor, char direction, int pwm){
 	
 	//need logic to choose motor
 	// 1 is rotation motor, 2 is pump motor
-	if(motor == 1) { //start rotaion motor control
+	if(motor == 1) { //start rotation motor control
 		OCR0A = pwm; //setting how fast the motor is running
 		//direction logic
 		if(direction == 1) { //1 is forward
@@ -380,8 +348,8 @@ void calibration(){
 	motor_off(3);
 	float position = ADC_Conversion(3); //getting initial position in steps.
 	float angular_V = ((ADC_Conversion(3)-position)*d_per_lvl)/2.0; //getting angular velocity for 2 second pulse of motor
-	char pwm = 40;
-	while (angular_V < 3.0) { //3.0 degrees/s is the wanted velocity based on motor analysis document
+	char pwm = 100;
+	while (((angular_V) < 3.0) && (angular_V > -3)) { //3.0 degrees/s is the wanted velocity based on motor analysis document
 		position = ADC_Conversion(3);
 		motor_run(1,1,pwm);
 		wait(2000);
@@ -455,12 +423,12 @@ void water_cycle(){
 	} //end of second movement
 	while(position < 128) {
 		if((128 - position) < 8) {
-			motor_run(1,0,(pwm_base-15));
+			motor_run(1,1,(pwm_base-15));
 			motor_run(2,1,50);
 			wait(500);
 			position = ADC_Conversion(3);
 		} else {
-			motor_run(1,0,pwm_base);
+			motor_run(1,1,pwm_base);
 			motor_run(2,1,75);
 			wait(500);
 			position = ADC_Conversion(3);
