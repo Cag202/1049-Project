@@ -49,8 +49,9 @@ int main(void)
 	PORTC = PORTC | (1<<PC4 | 1<<PC5);
 	PORTC = PORTC ^ 0<<PC3; //turning off the LED's and motor to start
 	
-	DDRD = 0b1110000; // PD5 and PD6 PWM 0, D7 and D3 nothing on them so 0, D4 1 cause direction, D2 0 cause interrupt is input, switches are set as outputs
-	PORTD = PORTD & 0<<PD4 & 0<<PD7; //turninng off motor and LED
+	DDRD = 0b11110000; // PD5 and PD6 PWM 0, D7 and D3 nothing on them so 0, D4 1 cause direction, D2 0 cause interrupt is input, switches are set as outputs
+	PORTD = PORTD & 0<<PD4; //turninng off motor and LED
+	PORTD = PORTD | 1<<PD7;
 	
 	DDRB = 0b00101111; // 7 Segment is PB2,3,5 PB0,1 are motor pins
 	PORTB = PORTB & 0<<PB0 & 0<<PB1; //setting motors pins off to start
@@ -298,7 +299,7 @@ void motor_run(char motor, char direction, int pwm){
 		OCR0A = pwm; //setting how fast the motor is running
 		//direction logic
 		if(direction == 1) { //1 is forward
-			PORTD = PORTD & 0<<PD4;
+			PORTD = (!(PORTD | 1<<PD4));
 			PORTB = PORTB | 1<<PB0;
 			PORTD = PORTD | 1<<PD6;
 		} else if (direction == 0){  //0 is reverse 
@@ -311,19 +312,20 @@ void motor_run(char motor, char direction, int pwm){
 		PORTB = PORTB | 1<<PB1;
 		PORTD = PORTD | 1<<PD5;
 	}
+	PORTD = PORTD | 1<<PD7;
 }
 
 void motor_off(char motor){
 	if(motor == 1){ //rotaion motor off
 		PORTB = PORTB & 0<<PB0;
-		PORTD = PORTD & 0<<PD4;
+		PORTD = (!(PORTD | 1<<PD4));
 	} else if (motor == 2){ //pump off
 		PORTB = PORTB & 0<<PB1;
 	} else if (motor == 3) { //both off
 		motor_off(1);
 		motor_off(2);
 	}
-	
+	PORTD = PORTD | 1<<PD7;
 }
 
 void calibration(){
@@ -382,7 +384,7 @@ void water_cycle(){
 	while (position < 171){
 		if((171 - position) < 8) {
 			motor_run(1,1,(pwm_base-15));
-			motor_run(2,1,85);
+			motor_run(2,1,80);
 			wait(500);
 			motor_off(3);
 			position = ADC_Conversion(3);
@@ -399,7 +401,7 @@ void water_cycle(){
 	while(position > 85) {
 		if((position - 85 < 8)){
 			motor_run(1,0,(pwm_base-15));
-			motor_run(2,1,85);
+			motor_run(2,1,80);
 			wait(500);
 			motor_off(3);
 			position = ADC_Conversion(3);
@@ -415,7 +417,7 @@ void water_cycle(){
 	while(position < 128) {
 		if((128 - position) < 8) {
 			motor_run(1,1,(pwm_base-15));
-			motor_run(2,1,85);
+			motor_run(2,1,80);
 			wait(500);
 			motor_off(3);
 			position = ADC_Conversion(3);
