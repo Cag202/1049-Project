@@ -11,7 +11,7 @@
 // Global Variables and Constants
 const float d_per_lvl = 1.0588;
 volatile int pwm_base; //stores the value of the pwm obtained in the calibration function.
-const float moisture_max = 220; //Adjust this value once max level read by the sensor is found
+const float moisture_max = 270; //Adjust this value once max level read by the sensor is found
 const int moisture_threshold = 64;
 
 
