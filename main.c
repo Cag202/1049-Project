@@ -2,7 +2,7 @@
  * ProjectCode.cpp
  *
  * Created: 4/1/2024 3:42:09 PM
- * Author : WillHoover
+ * Author : Colin Gilson, Will Hoover, Andrew Imbrogno
  */ 
 
 #include <avr/io.h>
